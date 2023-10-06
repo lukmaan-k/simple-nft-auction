@@ -33,6 +33,10 @@ contract Auction is ERC721Holder, ERC1155Holder, IAuction, Ownable {
         _auctionExtensionPeriod = auctionExtensionPeriod;
     }
 
+    /**
+     * @notice Creates a new auction
+     * @param inputs A struct containing all required parameters from the seller
+     */
     function createAuction(IAuction.AuctionInputs calldata inputs) external onlyOwner {
 
         if (inputs.endTime < block.timestamp) {
@@ -46,7 +50,8 @@ contract Auction is ERC721Holder, ERC1155Holder, IAuction, Ownable {
             if (inputs.nftAmount == 0) revert InvalidNftAmount(inputs.nftAmount);
             tokenType = IAuction.TOKEN_TYPE.ERC1155; // Update to ERC1155. Default value is already TOKEN_TYPE.ERC721 so no need to update above
         } else {
-            revert UnsupportedTokenType(inputs.nftAddress); // This doesn't hit if the contract doesn't implement supportsInterface(), and reverts without a reason
+            // This block only hits if a contract implements supportsInterface() and returns false. Otherwise, tx reverts without a reason
+            revert UnsupportedTokenType(inputs.nftAddress); 
         }
         
         _transferNFT(inputs.nftAddress, inputs.nftTokenId, inputs.nftAmount, msg.sender, address(this), tokenType);
@@ -74,6 +79,11 @@ contract Auction is ERC721Holder, ERC1155Holder, IAuction, Ownable {
         _auctionIds.increment();
     }
 
+    /**
+     * @notice Places a new bid on a given auctionId
+     * @param auctionId The auction ID to bid on
+     * @param amount The amount to bid with
+     */
     function bid(uint256 auctionId, uint256 amount) external payable onlyActiveAuction(auctionId) {
         // Copying the 3 variables below is more efficient than using a pointer to the AuctionParams struct
         uint32 endTime = auctions[auctionId].endTime;
@@ -109,6 +119,10 @@ contract Auction is ERC721Holder, ERC1155Holder, IAuction, Ownable {
         emit NewBid(auctionId, msg.sender, amount);
     }
 
+    /**
+     * @notice Cancel an existing auction
+     * @param auctionId The auction ID to cancel
+     */
     function cancelAuction(uint256 auctionId) external onlyOwner onlyActiveAuction(auctionId) {
         IAuction.AuctionParams storage auction = auctions[auctionId];
         if (auction.winningBid.bidder != address(0)) {
@@ -122,6 +136,10 @@ contract Auction is ERC721Holder, ERC1155Holder, IAuction, Ownable {
         emit AuctionCancelled(auctionId);
     }
 
+    /**
+     * @notice Settle an auction once it has ended. This is callable by anyone
+     * @param auctionId The auction ID to settle
+     */
     function settleAuction(uint256 auctionId) external onlyActiveAuction(auctionId) {
         IAuction.AuctionParams storage auction = auctions[auctionId];
         IAuction.Bid memory winningBid = auctions[auctionId].winningBid;
@@ -139,36 +157,65 @@ contract Auction is ERC721Holder, ERC1155Holder, IAuction, Ownable {
         emit AuctionSettled(auctionId);
     }
 
+    /**
+     * @notice Fetches the total number of auctions created since contract deployment 
+     */
     function getLifetimeAuctionsCreated() external view returns (uint256) {
         return _auctionIds.current();
     }
 
+    /**
+     * @notice Returns the AuctionParams struct for a given auctionId. The struct contains all relevant information for the auction, such
+     * as the nft listed, the desired currency by the seller, the minimum price and more. See IAuction-AuctionParams
+     * @param auctionId The auction ID to fetch for
+     */
     function getAuction(uint256 auctionId) external view returns (IAuction.AuctionParams memory) {
         return auctions[auctionId];
     }
 
+    /**
+     * @notice Fetches the current minimum percent a new bid needs to be compared with the previous bid to be valid
+     * @return _minBidIncrementBps The minimum percent in basis points (e.g. 200 is 2%)
+     */
     function getMinBidIncrementBps() external view returns (uint256) {
         return _minBidIncrementBps;
     }
 
+    /**
+     * @notice Fetches the period of time at the end of an auction where any new valid bids will extend the auction by the set extension period
+     * @return _softClosePeriod The soft close period in seconds
+     */
     function getSoftClosePeriod() external view returns (uint32) {
         return _softClosePeriod;
     }
 
+    /**
+     * @notice Fetches the period of time by which an auction is extended (see above)
+     * @return _auctionExtensionPeriod The extension period in seconds
+     */
     function getAuctionExtensionPeriod() external view returns (uint32) {
         return _auctionExtensionPeriod;
     }
 
+    /**
+     * @notice Sets the new minimum bid increment (in basis points)
+     */
     function setMinBidIncrementBps(uint256 minBidIncrementBps) external onlyOwner {
         _minBidIncrementBps = minBidIncrementBps;
         emit MinBidIncrementBpsUpdated(minBidIncrementBps);
     }
 
+    /**
+     * @notice Sets the new soft close period (in seconds)
+     */
     function setSoftClosePeriod(uint32 softClosePeriod) external onlyOwner {
         _softClosePeriod = softClosePeriod;
         emit SoftClosePeriodUpdated(softClosePeriod);
     }
 
+    /**
+     * @notice Sets the new extension period (in seconds)
+     */
     function setAuctionExtensionPeriod(uint32 auctionExtensionPeriod) external onlyOwner {
         _auctionExtensionPeriod = auctionExtensionPeriod;
         emit AuctionExtensionPeriodUpdated(auctionExtensionPeriod);
